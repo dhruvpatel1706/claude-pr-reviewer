@@ -184,8 +184,33 @@ claude-pr-reviewer review-diff --no-per-file < huge.diff
 
 - [x] **v0.2 — inline GitHub PR review comments (line-specific) via the reviews API**
 - [x] **v0.3 — per-file chunking for very large PRs; reviews files independently, merges findings**
-- [ ] v0.4 — config file (`.claude-review.yml`) for repo-specific conventions ("don't flag missing tests in `scripts/`")
+- [x] **v0.4 — `.claude-review.yml` config for per-repo path/category ignores + extra instructions**
 - [ ] v0.5 — cache recent reviews by diff hash to avoid re-billing on PR pushes that only changed one file
+
+### Repo config (v0.4)
+
+Drop a `.claude-review.yml` at the repo root to shape reviews without repeating yourself:
+
+```yaml
+model: claude-sonnet-4-6        # optional override
+max_input_chars: 250000         # optional override
+
+ignore_paths:
+  - "docs/**"
+  - "**/_generated/*"
+  - "scripts/**"
+
+ignore_categories:              # any of: bug security performance style tests docs design
+  - style
+  - docs
+
+extra_instructions: |
+  This is a pharma codebase. Don't flag NDC-shaped identifiers
+  (strings like 12345-1234-12) as "magic numbers" — those are
+  National Drug Codes.
+```
+
+The config is auto-discovered by walking up from the current directory. Override with `--config path/to/file.yml`. `extra_instructions` is appended to the system prompt so Claude knows the repo's conventions before reviewing; `ignore_paths` and `ignore_categories` filter findings *after* Claude returns, and the summary notes how many were suppressed.
 
 ## License
 

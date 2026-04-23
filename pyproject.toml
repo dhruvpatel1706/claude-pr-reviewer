@@ -1,6 +1,6 @@
 [project]
 name = "claude-pr-reviewer"
-version = "0.3.0"
+version = "0.4.0"
 description = "CLI and GitHub Action that reviews git diffs or PRs with Claude. Structured findings, severity levels, suggested fixes, and inline GitHub review comments."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,6 +26,7 @@ dependencies = [
     "unidiff>=0.7.5",
     "typer>=0.12.0",
     "rich>=13.7.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
