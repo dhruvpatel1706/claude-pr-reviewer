@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -12,6 +14,7 @@ from claude_pr_reviewer import __version__
 from claude_pr_reviewer.config import get_settings
 from claude_pr_reviewer.github import post_review, resolve_pr
 from claude_pr_reviewer.render import render_json, render_markdown
+from claude_pr_reviewer.repo_config import RepoConfig, find_config, load_config
 from claude_pr_reviewer.review import review_diff_text
 
 app = typer.Typer(
@@ -53,12 +56,44 @@ def _read_diff(diff_file: str | None) -> str:
         return f.read()
 
 
+def _resolve_repo_config(explicit: str | None) -> RepoConfig | None:
+    if explicit:
+        p = Path(explicit)
+        if not p.is_file():
+            err.print(f"[red]Config file not found: {p}[/red]")
+            raise typer.Exit(1)
+        return load_config(p)
+    found = find_config(Path(os.getcwd()))
+    if found is None:
+        return None
+    try:
+        cfg = load_config(found)
+    except Exception as exc:
+        err.print(f"[yellow](ignoring {found}: {exc})[/yellow]")
+        return None
+    if cfg.is_empty():
+        return None
+    console.print(f"[dim]Loaded repo config from {found}[/dim]")
+    return cfg
+
+
 @app.command("review-diff")
 def review_diff_cmd(
     diff_file: str = typer.Option(
         "-", "--file", "-f", help="Path to a diff file, or '-' for stdin (default)."
     ),
     fmt: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+    per_file: bool = typer.Option(
+        None,
+        "--per-file/--no-per-file",
+        help="Force per-file chunking (for huge PRs). Default: auto.",
+    ),
+    config: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to a .claude-review.yml. Default: search cwd and parents.",
+    ),
 ) -> None:
     """Review a raw unified-diff (from stdin by default)."""
     diff_text = _read_diff(diff_file)
@@ -66,8 +101,9 @@ def review_diff_cmd(
         err.print("[red]No diff content received.[/red]")
         raise typer.Exit(1)
     settings = get_settings()
+    repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(diff_text, settings)
+        review = review_diff_text(diff_text, settings, per_file=per_file, repo_config=repo_cfg)
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
@@ -79,6 +115,8 @@ def review_local_cmd(
     base: str = typer.Option("HEAD", "--base", "-b", help="Base revision to diff against."),
     target: str = typer.Option("", "--target", "-t", help="Target revision. Empty = working tree."),
     fmt: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+    per_file: bool = typer.Option(None, "--per-file/--no-per-file"),
+    config: str = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Review the local working-tree diff (or two revisions) via `git diff`."""
     cmd = ["git", "diff", base]
@@ -98,8 +136,9 @@ def review_local_cmd(
         raise typer.Exit(0)
 
     settings = get_settings()
+    repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(proc.stdout, settings)
+        review = review_diff_text(proc.stdout, settings, per_file=per_file, repo_config=repo_cfg)
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
@@ -120,6 +159,8 @@ def review_pr_cmd(
             "recommendation maps to APPROVE / REQUEST_CHANGES / COMMENT events."
         ),
     ),
+    per_file: bool = typer.Option(None, "--per-file/--no-per-file"),
+    config: str = typer.Option(None, "--config", "-c"),
 ) -> None:
     """Review a GitHub PR via the `gh` CLI."""
     try:
@@ -132,8 +173,9 @@ def review_pr_cmd(
         raise typer.Exit(1)
 
     settings = get_settings()
+    repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(proc.stdout, settings)
+        review = review_diff_text(proc.stdout, settings, per_file=per_file, repo_config=repo_cfg)
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
