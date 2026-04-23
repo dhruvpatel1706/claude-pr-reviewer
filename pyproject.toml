@@ -1,7 +1,7 @@
 [project]
 name = "claude-pr-reviewer"
-version = "0.1.0"
-description = "CLI and GitHub Action that reviews git diffs or pull requests with Claude. Structured findings, severity levels, suggested fixes."
+version = "0.2.0"
+description = "CLI and GitHub Action that reviews git diffs or PRs with Claude. Structured findings, severity levels, suggested fixes, and inline GitHub review comments."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

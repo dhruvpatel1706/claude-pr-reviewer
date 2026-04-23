@@ -4,6 +4,8 @@
 
 What commercial services (Greptile, CodeRabbit, Codium) sell as a SaaS — wrapped into a single Python package you self-host. Reads a diff, sends it to Claude with a structured output schema, and returns ranked findings with severity, file/line locations, and suggested fixes. Works on local uncommitted changes, a revision range, or a live GitHub PR.
 
+**v0.2 ships proper inline GitHub reviews.** `--post` no longer leaves one wall-of-text comment on the PR — each finding becomes a line-specific inline comment on the exact line it flags, wrapped in a single GitHub review that maps to `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` based on the highest-severity finding. Parity with what CodeRabbit and Greptile ship.
+
 ---
 
 ## What it produces
@@ -146,9 +148,26 @@ flake8 src tests --max-line-length=100 --ignore=E501,W503,E203
 
 CI runs on Python 3.10 / 3.11 / 3.12.
 
+## Inline review posting
+
+`--post` now posts a proper GitHub review, not a top-level comment. Each finding:
+
+1. With a line number becomes an **inline review comment** anchored to that exact line (multi-line findings use GitHub's `start_line`/`line` pair).
+2. At file level (no line number) folds into the review body under a "File-level notes" section so nothing is lost.
+
+The `overall_recommendation` on the `Review` object maps to a GitHub **review event**:
+
+| Review field | GitHub event | When |
+| --- | --- | --- |
+| `approve` | `APPROVE` | No findings, or only `info` |
+| `comment` | `COMMENT` | Only `medium` / `low` findings |
+| `request-changes` | `REQUEST_CHANGES` | Any `critical` or `high` finding |
+
+This is posted via `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews` — single atomic review, multiple inline comments.
+
 ## Roadmap
 
-- [ ] v0.2 — inline GitHub PR review comments (line-specific) via `gh api`, not just a single body comment
+- [x] **v0.2 — inline GitHub PR review comments (line-specific) via the reviews API**
 - [ ] v0.3 — per-file chunking for very large PRs; review files independently and aggregate
 - [ ] v0.4 — config file (`.claude-review.yml`) for repo-specific conventions ("don't flag missing tests in `scripts/`")
 - [ ] v0.5 — cache recent reviews by diff hash to avoid re-billing on PR pushes that only changed one file

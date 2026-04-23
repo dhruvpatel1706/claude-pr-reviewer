@@ -10,6 +10,7 @@ from rich.console import Console
 
 from claude_pr_reviewer import __version__
 from claude_pr_reviewer.config import get_settings
+from claude_pr_reviewer.github import post_review, resolve_pr
 from claude_pr_reviewer.render import render_json, render_markdown
 from claude_pr_reviewer.review import review_diff_text
 
@@ -112,7 +113,12 @@ def review_pr_cmd(
     post: bool = typer.Option(
         False,
         "--post",
-        help="After review, post the markdown report as a comment on the PR via `gh`.",
+        help=(
+            "Post the findings back to the PR as a proper inline GitHub review — "
+            "each finding becomes a line-specific comment on the exact diff line "
+            "(file-level findings fold into the review body). The overall "
+            "recommendation maps to APPROVE / REQUEST_CHANGES / COMMENT events."
+        ),
     ),
 ) -> None:
     """Review a GitHub PR via the `gh` CLI."""
@@ -135,18 +141,21 @@ def review_pr_cmd(
     _emit(review, fmt)
 
     if post:
-        body = render_markdown(review)
         try:
-            subprocess.run(
-                ["gh", "pr", "comment", pr, "--body", body],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            console.print(f"[green]Posted review to PR {pr}.[/green]")
+            owner, repo, pr_number = resolve_pr(pr)
         except subprocess.CalledProcessError as e:
-            err.print(f"[red]gh pr comment failed:[/red] {e.stderr}")
+            err.print(f"[red]Could not resolve PR:[/red] {e.stderr}")
             raise typer.Exit(1)
+        try:
+            post_review(owner, repo, pr_number, review)
+        except subprocess.CalledProcessError as e:
+            err.print(f"[red]gh api POST reviews failed:[/red] {e.stderr}")
+            raise typer.Exit(1)
+        inline_count = sum(1 for f in review.findings if f.start_line > 0)
+        console.print(
+            f"[green]Posted review to {owner}/{repo}#{pr_number}[/green] "
+            f"({inline_count} inline comments, recommendation: {review.overall_recommendation})."
+        )
 
 
 if __name__ == "__main__":
