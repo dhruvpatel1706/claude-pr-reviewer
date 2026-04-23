@@ -104,6 +104,31 @@ claude-pr-reviewer review-pr https://github.com/org/repo/pull/456
 claude-pr-reviewer review-pr 123 --post
 ```
 
+### Calibrate against a labelled set (v0.6)
+
+When I tweak the system prompt or swap the model, I want to know if quality actually moved. Hand a `calibrate.yml` with diffs and known issues, get precision / recall / F1.
+
+```bash
+# Pick a few diffs, label expected findings once, then:
+claude-pr-reviewer calibrate calibration/set.yml
+# Calibration results:
+# case                    TP  FP  FN  precision  recall  F1
+# sql-injection-leak       2   0   0       1.00    1.00  1.00
+# stale-comment-refactor   1   2   1       0.33    0.50  0.40
+# Overall: precision 0.600 · recall 0.750 · F1 0.667
+
+# Output JSON for trend tracking
+claude-pr-reviewer calibrate set.yml --format json > runs/$(date +%s).json
+
+# Show which findings were missed and which were extra
+claude-pr-reviewer calibrate set.yml --verbose
+
+# A/B two prompts by overriding the model for this run
+claude-pr-reviewer calibrate set.yml --model claude-sonnet-4-6
+```
+
+Spec format is documented at the top of [`src/claude_pr_reviewer/calibrate.py`](src/claude_pr_reviewer/calibrate.py).
+
 ### As a GitHub Action
 
 Copy [examples/action.yml](examples/action.yml) to `.github/workflows/claude-review.yml` in your target repo, and set `ANTHROPIC_API_KEY` as a repository secret. Every PR (open, push, reopen) now gets a Claude review as a comment.
