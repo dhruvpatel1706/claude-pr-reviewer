@@ -1,0 +1,38 @@
+# Drop-in GitHub Actions workflow for reviewing every PR with Claude.
+# Save this as `.github/workflows/claude-review.yml` in your target repo, and
+# add ANTHROPIC_API_KEY as a repository secret.
+
+name: Claude PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write    # needed to post the review comment
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # full history so git diff sees the base branch
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install claude-pr-reviewer
+        run: pip install claude-pr-reviewer
+
+      - name: Review PR
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          claude-pr-reviewer review-diff --file /tmp/pr.diff > /tmp/review.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/review.md
