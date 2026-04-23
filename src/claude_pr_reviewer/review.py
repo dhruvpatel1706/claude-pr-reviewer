@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import anthropic
 
+from claude_pr_reviewer import cache as _cache
 from claude_pr_reviewer.config import Settings
 from claude_pr_reviewer.diff import FileDiff, ParsedDiff, fit_into_budget, parse_diff
 from claude_pr_reviewer.models import Finding, Review
@@ -56,6 +57,7 @@ def _run_single_call(
     diff_text: str,
     extra_note: str = "",
     repo_instructions: str = "",
+    use_cache: bool = True,
 ) -> Review:
     system_prompt = SYSTEM_PROMPT
     if repo_instructions.strip():
@@ -64,6 +66,14 @@ def _run_single_call(
             + "\n\n---\nRepo-specific conventions from .claude-review.yml:\n"
             + repo_instructions.strip()
         )
+
+    # Check disk cache first (v0.5). Model + repo_instructions are part of the
+    # key, so swapping either invalidates automatically.
+    cache_extra = repo_instructions
+    if use_cache:
+        cached = _cache.get(diff_text, model=settings.model, extra=cache_extra)
+        if cached is not None:
+            return cached
 
     user_prompt = (
         f"Here is the diff. Review it against the principles in the system prompt."
@@ -85,7 +95,14 @@ def _run_single_call(
     )
     if response.parsed_output is None:
         raise RuntimeError(f"Review parsing failed. stop_reason={response.stop_reason}")
-    return response.parsed_output
+
+    result = response.parsed_output
+    if use_cache:
+        try:
+            _cache.put(diff_text, result, model=settings.model, extra=cache_extra)
+        except OSError:
+            pass  # cache misses shouldn't break the review
+    return result
 
 
 def _merge_per_file_reviews(
@@ -127,6 +144,7 @@ def review_diff_text(
     *,
     per_file: bool | None = None,
     repo_config: RepoConfig | None = None,
+    use_cache: bool = True,
 ) -> Review:
     """Run the full review pipeline on raw unified-diff text.
 
@@ -182,6 +200,7 @@ def review_diff_text(
             trimmed_text,
             extra_note=skip_note,
             repo_instructions=repo_instructions,
+            use_cache=use_cache,
         )
     else:
         file_reviews: list[tuple[FileDiff, Review]] = []
@@ -200,6 +219,7 @@ def review_diff_text(
                 fd.raw,
                 extra_note=per_file_note,
                 repo_instructions=repo_instructions,
+                use_cache=use_cache,
             )
             file_reviews.append((fd, r))
         review = _merge_per_file_reviews(file_reviews, skipped)
