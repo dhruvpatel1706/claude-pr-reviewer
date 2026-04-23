@@ -11,6 +11,7 @@ import typer
 from rich.console import Console
 
 from claude_pr_reviewer import __version__
+from claude_pr_reviewer import cache as _cache
 from claude_pr_reviewer.config import get_settings
 from claude_pr_reviewer.github import post_review, resolve_pr
 from claude_pr_reviewer.render import render_json, render_markdown
@@ -94,6 +95,9 @@ def review_diff_cmd(
         "-c",
         help="Path to a .claude-review.yml. Default: search cwd and parents.",
     ),
+    use_cache: bool = typer.Option(
+        True, "--cache/--no-cache", help="Read/write the on-disk review cache (v0.5)."
+    ),
 ) -> None:
     """Review a raw unified-diff (from stdin by default)."""
     diff_text = _read_diff(diff_file)
@@ -103,7 +107,13 @@ def review_diff_cmd(
     settings = get_settings()
     repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(diff_text, settings, per_file=per_file, repo_config=repo_cfg)
+        review = review_diff_text(
+            diff_text,
+            settings,
+            per_file=per_file,
+            repo_config=repo_cfg,
+            use_cache=use_cache,
+        )
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
@@ -117,6 +127,7 @@ def review_local_cmd(
     fmt: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
     per_file: bool = typer.Option(None, "--per-file/--no-per-file"),
     config: str = typer.Option(None, "--config", "-c"),
+    use_cache: bool = typer.Option(True, "--cache/--no-cache"),
 ) -> None:
     """Review the local working-tree diff (or two revisions) via `git diff`."""
     cmd = ["git", "diff", base]
@@ -138,7 +149,13 @@ def review_local_cmd(
     settings = get_settings()
     repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(proc.stdout, settings, per_file=per_file, repo_config=repo_cfg)
+        review = review_diff_text(
+            proc.stdout,
+            settings,
+            per_file=per_file,
+            repo_config=repo_cfg,
+            use_cache=use_cache,
+        )
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
@@ -161,6 +178,7 @@ def review_pr_cmd(
     ),
     per_file: bool = typer.Option(None, "--per-file/--no-per-file"),
     config: str = typer.Option(None, "--config", "-c"),
+    use_cache: bool = typer.Option(True, "--cache/--no-cache"),
 ) -> None:
     """Review a GitHub PR via the `gh` CLI."""
     try:
@@ -175,7 +193,13 @@ def review_pr_cmd(
     settings = get_settings()
     repo_cfg = _resolve_repo_config(config)
     try:
-        review = review_diff_text(proc.stdout, settings, per_file=per_file, repo_config=repo_cfg)
+        review = review_diff_text(
+            proc.stdout,
+            settings,
+            per_file=per_file,
+            repo_config=repo_cfg,
+            use_cache=use_cache,
+        )
     except Exception as exc:
         err.print(f"[red]Review failed:[/red] {exc}")
         raise typer.Exit(1)
@@ -198,6 +222,13 @@ def review_pr_cmd(
             f"[green]Posted review to {owner}/{repo}#{pr_number}[/green] "
             f"({inline_count} inline comments, recommendation: {review.overall_recommendation})."
         )
+
+
+@app.command("cache-clear")
+def cache_clear_cmd() -> None:
+    """Remove every cached review. Useful after a model swap or before benchmarking."""
+    n = _cache.clear()
+    console.print(f"[green]Cleared[/green] {n} cached review(s) from {_cache.DEFAULT_CACHE_DIR}")
 
 
 if __name__ == "__main__":
