@@ -165,10 +165,25 @@ The `overall_recommendation` on the `Review` object maps to a GitHub **review ev
 
 This is posted via `gh api POST /repos/{owner}/{repo}/pulls/{n}/reviews` — single atomic review, multiple inline comments.
 
+## Per-file chunking (v0.3)
+
+When a PR is too big to fit in a single Claude request, the reviewer auto-splits: one call per file, findings aggregated, `overall_recommendation` set to the strictest across all files. The single-file budget cap still applies — a single file too large to fit on its own is listed under "Skipped" in the summary.
+
+```
+# auto (default) — single call unless total diff > MAX_INPUT_CHARS
+claude-pr-reviewer review-pr 1234
+
+# force per-file even for small PRs (useful for debugging)
+claude-pr-reviewer review-diff --per-file < huge.diff
+
+# disable chunking entirely, accept truncation
+claude-pr-reviewer review-diff --no-per-file < huge.diff
+```
+
 ## Roadmap
 
 - [x] **v0.2 — inline GitHub PR review comments (line-specific) via the reviews API**
-- [ ] v0.3 — per-file chunking for very large PRs; review files independently and aggregate
+- [x] **v0.3 — per-file chunking for very large PRs; reviews files independently, merges findings**
 - [ ] v0.4 — config file (`.claude-review.yml`) for repo-specific conventions ("don't flag missing tests in `scripts/`")
 - [ ] v0.5 — cache recent reviews by diff hash to avoid re-billing on PR pushes that only changed one file
 
